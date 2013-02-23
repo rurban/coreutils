@@ -596,6 +596,8 @@ GNU coreutils NEWS                                    -*- outline -*-
 
 ** New features
 
+  cp and mv got the new -g/--progress-bar option.
+
   id now supports specifying multiple users.
 
   'date' now supports the '+' conversion specification flag,
