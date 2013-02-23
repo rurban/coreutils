@@ -235,6 +235,9 @@ struct cp_options
      Create destination directories as usual. */
   bool symbolic_link;
 
+  /* If true, draw a nice progress bar on screen */
+  bool progress_bar;
+
   /* If true, do not copy a nondirectory that has an existing destination
      with the same or newer modification time. */
   bool update;
@@ -280,6 +283,19 @@ struct cp_options
   Hash_table *src_info;
 };
 
+struct progress_status {
+  char ** cProgressField;
+  struct timeval last_time;
+  struct timeval oStartTime;
+  struct stat src_open_sb;
+  int iCountDown;
+  int last_size, iBarLength;
+  long iTotalSize;
+  long iTotalWritten;
+  int iFilesCopied;
+  int iTotalFiles;
+};
+
 /* Arrange to make rename calls go through the wrapper function
    on systems with a rename function that fails for a source file name
    specified with a trailing slash.  */
@@ -292,7 +308,8 @@ int rpl_rename (char const *, char const *);
 bool copy (char const *src_name, char const *dst_name,
            int dst_dirfd, char const *dst_relname,
            int nonexistent_dst, const struct cp_options *options,
-           bool *copy_into_self, bool *rename_succeeded)
+           bool *copy_into_self, bool *rename_succeeded,
+           struct progress_status *s_progress)
   _GL_ATTRIBUTE_NONNULL ((1, 2, 4, 6, 7));
 
 extern bool set_process_security_ctx (char const *src_name,
@@ -314,5 +331,7 @@ void cp_options_default (struct cp_options *) _GL_ATTRIBUTE_NONNULL ();
 bool chown_failure_ok (struct cp_options const *)
   _GL_ATTRIBUTE_NONNULL () _GL_ATTRIBUTE_PURE;
 mode_t cached_umask (void);
+
+int file_size_format (char *cDst, long lSize, int iCounter);
 
 #endif

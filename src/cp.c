@@ -130,6 +130,7 @@ static struct option const long_opts[] =
   {"symbolic-link", no_argument, NULL, 's'},
   {"target-directory", required_argument, NULL, 't'},
   {"update", no_argument, NULL, 'u'},
+  {"progress-bar", no_argument, NULL, 'g'},
   {"verbose", no_argument, NULL, 'v'},
   {GETOPT_SELINUX_CONTEXT_OPTION_DECL},
   {GETOPT_HELP_OPTION_DECL},
@@ -172,6 +173,7 @@ Copy SOURCE to DEST, or multiple SOURCE(s) to DIRECTORY.\n\
   -f, --force                  if an existing destination file cannot be\n\
                                  opened, remove it and try again (this option\n\
                                  is ignored when the -n option is also used)\n\
+  -g, --progress-bar           display a progress bar\n\
   -i, --interactive            prompt before overwrite (overrides a previous -n\
 \n\
                                   option)\n\
@@ -584,6 +586,7 @@ do_copy (int n_files, char **file, char const *target_directory,
   struct stat sb;
   bool new_dst = false;
   bool ok = true;
+  struct progress_status s_progress = { 0 };
 
   if (n_files <= !target_directory)
     {
@@ -648,6 +651,62 @@ do_copy (int n_files, char **file, char const *target_directory,
             die (EXIT_FAILURE, err, _("target %s"), quoteaf (lastfile));
         }
     }
+
+  struct timeval start_time;
+  if (x->progress_bar)
+    {
+      s_progress.iTotalSize = 0;
+      s_progress.iTotalFiles = 0;
+      s_progress.iFilesCopied = 0;
+      s_progress.iTotalWritten = 0;
+
+      /* save time */
+      gettimeofday (&start_time, NULL);
+      s_progress.oStartTime = start_time;
+
+      printf ( "Calculating total size... \r" );
+      fflush ( stdout );
+      long iTotalSize = 0;
+      int iFiles = n_files;
+      if ( ! target_directory )
+        iFiles = n_files - 1;
+      int j;
+
+      /* how many files are we copying */
+      char command[1024];
+      sprintf( command, "find \"%s\" -type f | wc -l", file[0]);
+      FILE *fp ;
+      char output[1024];
+      fp = popen(command, "r");
+      if (fp == NULL || fgets(output, sizeof(output)-1, fp) == NULL)
+        printf("failed to run find.\n");
+      else
+        s_progress.iTotalFiles = atoi (output);
+
+      for (j = 0; j < iFiles; j++)
+        {
+          /* call du -s for each file */
+          sprintf ( command, "du -s \"%s\"", file[j] );
+          /* TODO: replace all quote signs in file[i] */
+
+          fp = popen(command, "r");
+          if (fp == NULL || fgets(output, sizeof(output)-1, fp) == NULL) {
+            printf("failed to run du.\n" );
+          }
+          else
+            {
+              /* isolate size */
+              strchr ( output, '\t' )[0] = '\0';
+              iTotalSize += atol ( output );
+
+              printf ( "Calculating total size... %ld\r", iTotalSize );
+              fflush ( stdout );
+            }
+          pclose(fp);
+        }
+      s_progress.iTotalSize = iTotalSize;
+    }
+
 
   if (target_directory)
     {
@@ -727,7 +786,7 @@ do_copy (int n_files, char **file, char const *target_directory,
             {
               bool copy_into_self;
               ok &= copy (arg, dst_name, target_dirfd, arg_in_concat,
-                          new_dst, x, &copy_into_self, NULL);
+                          new_dst, x, &copy_into_self, NULL, &s_progress);
 
               if (parents_option)
                 ok &= re_protect (dst_name, target_dirfd, arg_in_concat,
@@ -785,7 +844,47 @@ do_copy (int n_files, char **file, char const *target_directory,
           x = &x_tmp;
         }
 
-      ok = copy (source, dest, AT_FDCWD, dest, -new_dst, x, &unused, NULL);
+      ok = copy (source, dest, AT_FDCWD, dest, -new_dst, x, &unused, NULL, &s_progress);
+    }
+
+    if (x->progress_bar)
+      {
+        /* remove everything */
+        int i;
+        if (s_progress.iTotalFiles > 1)
+        {
+          for (i = 0; i < 6; i++)
+            printf ("\033[K\n");
+          printf ("\r\033[6A");
+        }
+        else
+        {
+          for (i = 0; i < 3; i++)
+            printf ("\033[K\n");
+          printf ("\r\033[3A");
+        }
+
+        /* save time */
+        struct timeval end_time;
+        gettimeofday (&end_time, NULL);
+        int usec_elapsed = end_time.tv_usec - start_time.tv_usec;
+        double sec_elapsed = (double) usec_elapsed / 1000000.0;
+        sec_elapsed += (double) (end_time.tv_sec - start_time.tv_sec);
+
+        /* get total size */
+        char sTotalWritten[20];
+        file_size_format (sTotalWritten, s_progress.iTotalSize, 1);
+        /* TODO: using s_progress.iTotalWritten would be more correct, but is less accurate */
+
+        /* calculate speed */
+        int copy_speed = (int) ((double) s_progress.iTotalWritten / sec_elapsed);
+        char s_copy_speed[20];
+        file_size_format (s_copy_speed, copy_speed, 1);
+
+        /* good-bye message */
+        printf ("%d files (%s) copied in %.1f seconds (%s/s).\n",
+                s_progress.iFilesCopied, sTotalWritten,
+                sec_elapsed, s_copy_speed);
     }
 
   return ok;
@@ -823,6 +922,7 @@ cp_option_init (struct cp_options *x)
   x->recursive = false;
   x->sparse_mode = SPARSE_AUTO;
   x->symbolic_link = false;
+  x->progress_bar = false;
   x->set_mode = false;
   x->mode = 0;
 
@@ -840,6 +940,13 @@ cp_option_init (struct cp_options *x)
 
   x->dest_info = NULL;
   x->src_info = NULL;
+
+  //x->iTotalSize = 0;
+  //x->iTotalWritten = 0;
+  //x->iFilesCopied = 0;
+  //x->iTotalFiles = 0;
+  //x->progress_bar = false;
+  //memset(&x->oStartTime, 0, sizeof (struct timeval));
 }
 
 /* Given a string, ARG, containing a comma-separated list of arguments
@@ -961,7 +1068,7 @@ main (int argc, char **argv)
   selinux_enabled = (0 < is_selinux_enabled ());
   cp_option_init (&x);
 
-  while ((c = getopt_long (argc, argv, "abdfHilLnprst:uvxPRS:TZ",
+  while ((c = getopt_long (argc, argv, "abdfgHilLnprst:uvxPRS:TZ",
                            long_opts, NULL))
          != -1)
     {
@@ -1020,6 +1127,10 @@ main (int argc, char **argv)
 
         case 'f':
           x.unlink_dest_after_failed_open = true;
+          break;
+
+        case 'g':
+          x.progress_bar = true;
           break;
 
         case 'H':

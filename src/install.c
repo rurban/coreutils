@@ -428,7 +428,7 @@ copy_file (char const *from, char const *to,
      However, since !x->recursive, the call to "copy" will fail if FROM
      is a directory.  */
 
-  return copy (from, to, to_dirfd, to_relname, 0, x, &copy_into_self, NULL);
+  return copy (from, to, to_dirfd, to_relname, 0, x, &copy_into_self, NULL, NULL);
 }
 
 /* Set the attributes of file or directory NAME aka DIRFD+RELNAME.

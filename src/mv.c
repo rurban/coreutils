@@ -68,6 +68,7 @@ static struct option const long_options[] =
   {"target-directory", required_argument, NULL, 't'},
   {"update", no_argument, NULL, 'u'},
   {"verbose", no_argument, NULL, 'v'},
+  {"progress-bar", no_argument, NULL, 'g'},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
   {NULL, 0, NULL, 0}
@@ -146,6 +147,7 @@ cp_option_init (struct cp_options *x)
   x->verbose = false;
   x->dest_info = NULL;
   x->src_info = NULL;
+  x->progress_bar = false;
 }
 
 /* Move SOURCE onto DEST aka DEST_DIRFD+DEST_RELNAME.
@@ -155,12 +157,85 @@ cp_option_init (struct cp_options *x)
 
 static bool
 do_move (char const *source, char const *dest,
-         int dest_dirfd, char const *dest_relname, const struct cp_options *x)
+         int dest_dirfd, char const *dest_relname, struct cp_options *x)
 {
+  struct timeval start_time;
+
   bool copy_into_self;
   bool rename_succeeded;
+  struct progress_status s_progress = { 0 };
+
+  if (x->progress_bar && x->rename_errno != 0)
+    {
+      s_progress.iTotalSize = 0;
+      s_progress.iFilesCopied = 0;
+      s_progress.iTotalWritten = 0;
+
+      gettimeofday (&start_time, NULL);
+      s_progress.oStartTime = start_time;
+
+      printf ("Calculating total size... \r");
+      fflush (stdout);
+      long iTotalSize = 0;
+      /* call du -s for each file */
+      /* create command */
+      char command[1024];
+      sprintf ( command, "du -s '%s'", source );
+      /* TODO: replace all quote signs in file[i] */
+
+      FILE *fp;
+      char output[1024];
+
+      /* run command */
+      fp = popen(command, "r");
+      if (fp == NULL || fgets(output, sizeof(output)-1, fp) == NULL) {
+        //printf("failed to run du.\n" );
+      }
+      else
+        {
+          /* isolate size */
+          strchr ( output, '\t' )[0] = '\0';
+          iTotalSize += atol ( output );
+          printf ("Calculating total size... %ld\r", iTotalSize);
+          fflush (stdout);
+        }
+
+      pclose (fp);
+      s_progress.iTotalSize = iTotalSize;
+    }
   bool ok = copy (source, dest, dest_dirfd, dest_relname, 0, x,
-                  &copy_into_self, &rename_succeeded);
+                  &copy_into_self, &rename_succeeded, &s_progress);
+
+  if (x->progress_bar && (x->rename_errno != 0 && ok))
+    {
+      /* remove everything */
+      int i;
+      int limit = (s_progress.iTotalFiles > 1 ? 6 : 3);
+      for (i=0; i < limit; i++)
+        printf ("\033[K\n");
+      printf ("\r\033[3A");
+
+      /* save time */
+      struct timeval end_time;
+      gettimeofday (&end_time, NULL);
+      int usec_elapsed = end_time.tv_usec - start_time.tv_usec;
+      double sec_elapsed = (double) usec_elapsed / 1000000.0;
+      sec_elapsed += (double) (end_time.tv_sec - start_time.tv_sec);
+
+      /* get total size */
+      char sTotalWritten[20];
+      file_size_format (sTotalWritten, s_progress.iTotalSize, 1);
+      /* TODO: using s_progress.iTotalWritten would be more correct, but is less accurate */
+
+      /* calculate speed */
+      int copy_speed = (int) ((double) s_progress.iTotalWritten / sec_elapsed);
+      char s_copy_speed[20];
+      file_size_format (s_copy_speed, copy_speed, 1);
+
+      /* good-bye message */
+      printf ("%d files (%s) moved in %.1f seconds (%s/s).\n",
+              s_progress.iFilesCopied, sTotalWritten, sec_elapsed, s_copy_speed);
+    }
 
   if (ok)
     {
@@ -264,6 +339,7 @@ Rename SOURCE to DEST, or move SOURCE(s) to DIRECTORY.\n\
 "), stdout);
       fputs (_("\
   -f, --force                  do not prompt before overwriting\n\
+  -g, --progress-bar           display a progress-bar\n\
   -i, --interactive            prompt before overwrite\n\
   -n, --no-clobber             do not overwrite an existing file\n\
 If you specify more than one of -i, -f, -n, only the final one takes effect.\n\
@@ -321,7 +397,7 @@ main (int argc, char **argv)
   /* Try to disable the ability to unlink a directory.  */
   priv_set_remove_linkdir ();
 
-  while ((c = getopt_long (argc, argv, "bfint:uvS:TZ", long_options, NULL))
+  while ((c = getopt_long (argc, argv, "bfint:uvgS:TZ", long_options, NULL))
          != -1)
     {
       switch (c)
@@ -363,6 +439,11 @@ main (int argc, char **argv)
         case 'v':
           x.verbose = true;
           break;
+
+        case 'g':
+          x.progress_bar = true;
+          break;
+
         case 'S':
           make_backups = true;
           backup_suffix = optarg;
