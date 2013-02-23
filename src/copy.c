@@ -129,6 +129,65 @@ struct dir_list
   dev_t dev;
 };
 
+struct progress_status {
+  int iCountDown;
+  char ** cProgressField;
+  struct timeval last_time;
+  int last_size, iBarLength;
+  struct stat src_open_sb;
+};
+
+static void file_progress_bar (char *cDest, int iBarLength,
+                               long lProgress, long lTotal)
+{
+  double dPercent = (double) lProgress / (double) lTotal * 100.0;
+  sprintf(cDest + (iBarLength - 6), "%4.1f", dPercent);
+  cDest[iBarLength - 2] = ' ';
+
+  int i;
+  for (i=1; i<=iBarLength - 9; i++)
+    {
+      if (dPercent > (double) (i-1) / (iBarLength - 10) * 100.0)
+        cDest[i] = '=';
+      else
+        cDest[i] = ' ';
+    }
+  for (i=1; i<iBarLength - 9; i++)
+    {
+      if ((cDest[i+1] == ' ') && (cDest[i] == '='))
+        cDest[i] = '>';
+    }
+}
+
+int file_size_format (char *cDest, long lSize, int iCounter)
+{
+  double dSize = (double) lSize;
+  while ( dSize >= 1000.0 )
+  {
+    dSize /= 1024.0;
+    iCounter++;
+  }
+
+  /* get unit */
+  char *sUnit;
+  if (iCounter == 0)
+    sUnit = (char *) "B";
+  else if (iCounter == 1)
+    sUnit = (char *) "KiB";
+  else if (iCounter == 2)
+    sUnit = (char *) "MiB";
+  else if (iCounter == 3)
+    sUnit = (char *) "GiB";
+  else if (iCounter == 4)
+    sUnit = (char *) "TiB";
+  else
+    sUnit = (char *) "N/A";
+
+  /* write number */
+  return sprintf (cDest, "%5.1f %s", dSize, sUnit);
+}
+
+
 /* Initial size of the cp.dest_info hash table.  */
 #define DEST_INFO_INITIAL_CAPACITY 61
 
@@ -261,7 +320,9 @@ sparse_copy (int src_fd, int dest_fd, char *buf, size_t buf_size,
              size_t hole_size, bool punch_holes,
              char const *src_name, char const *dst_name,
              uintmax_t max_n_read, off_t *total_n_read,
-             bool *last_write_made_hole)
+             bool *last_write_made_hole,
+             struct progress_status *s_progress,
+             struct cp_options *x)
 {
   *last_write_made_hole = false;
   *total_n_read = 0;
@@ -310,6 +371,85 @@ sparse_copy (int src_fd, int dest_fd, char *buf, size_t buf_size,
 
   while (max_n_read)
     {
+
+    if (x->progress)
+      {
+        /* update countdown */
+        s_progress->iCountDown--;
+        char * sProgressBar = s_progress->cProgressField[5];
+        if (s_progress->iCountDown < 0)
+          s_progress->iCountDown = 100;
+
+        /* just print one line with the percentage, but not always */
+        if (s_progress->iCountDown == 0)
+          {
+            /* calculate current speed */
+            struct timeval cur_time;
+            gettimeofday ( & cur_time, NULL );
+            int cur_size = x->iTotalWritten + *total_n_read / 1024;
+            int usec_elapsed = cur_time.tv_usec - s_progress->last_time.tv_usec;
+            double sec_elapsed = (double) usec_elapsed / 1000000.0;
+            sec_elapsed += (double) (cur_time.tv_sec - s_progress->last_time.tv_sec);
+            int copy_speed = (int) ( (double) (cur_size - s_progress->last_size)
+                                     / sec_elapsed );
+            char s_copy_speed[20];
+            file_size_format (s_copy_speed, copy_speed, 1);
+            /* update vars */
+            s_progress->last_time = cur_time;
+            s_progress->last_size = cur_size;
+
+            /* how many time has passed since the start? */
+            int isec_elapsed = cur_time.tv_sec - x->oStartTime.tv_sec;
+            int sec_remaining = (int) ( (double) isec_elapsed / cur_size
+                                        * x->iTotalSize) - isec_elapsed;
+            int min_remaining = sec_remaining / 60;
+            sec_remaining -= min_remaining * 60;
+            int hours_remaining = min_remaining / 60;
+            min_remaining -= hours_remaining * 60;
+            /* print out */
+            sprintf (s_progress->cProgressField[3],
+                     "Copying at %s/s (about %d %d %d remaining)", s_copy_speed,
+                     hours_remaining, min_remaining, sec_remaining );
+
+            int fs_len;
+            if (x->iTotalFiles > 1)
+              {
+                /* global progress bar */
+                file_progress_bar (s_progress->cProgressField[2], s_progress->iBarLength,
+                                   x->iTotalWritten + *total_n_read / 1024, x->iTotalSize );
+
+                /* print the global status */
+                fs_len = file_size_format (s_progress->cProgressField[1] +
+                                           s_progress->iBarLength - 21,
+                                           x->iTotalWritten + *total_n_read / 1024, 1);
+                s_progress->cProgressField[1][s_progress->iBarLength - 21 + fs_len] = ' ';
+              }
+
+            /* current progress bar */
+            file_progress_bar (sProgressBar, s_progress->iBarLength, *total_n_read,
+                               s_progress->src_open_sb.st_size);
+
+            /* print the status */
+            fs_len = file_size_format (s_progress->cProgressField[4] +
+                                       s_progress->iBarLength - 21, *total_n_read, 0);
+            s_progress->cProgressField[4][s_progress->iBarLength - 21 + fs_len] = ' ';
+
+            /* print the field */
+            int it;
+            for (it = x->iTotalFiles>1 ? 0 : 3; it < 6; it++)
+              {
+                printf ("\033[K%s\n", s_progress->cProgressField[it]);
+                /*if (strlen (s_progress->cProgressField[it]) < s_progress->iBarLength)
+                  printf ("");*/
+              }
+            if (x->iTotalFiles > 1)
+              printf ("\r\033[6A");
+            else
+              printf ("\r\033[3A");
+            fflush (stdout);
+          }
+      }
+
       ssize_t n_read = read (src_fd, buf, MIN (max_n_read, buf_size));
       if (n_read < 0)
         {
@@ -394,6 +534,13 @@ sparse_copy (int src_fd, int dest_fd, char *buf, size_t buf_size,
          certain files in /proc or /sys with linux kernels.  */
     }
 
+    if (x->progress)
+      {
+        /* update total size */
+        x->iTotalWritten += *total_n_read / 1024;
+        x->iFilesCopied++;
+      }
+
   /* Ensure a trailing hole is created, so that subsequent
      calls of sparse_copy() start at the correct offset.  */
   if (make_hole && ! create_hole (dest_fd, dst_name, punch_holes, psize))
@@ -467,7 +614,11 @@ extent_copy (int src_fd, int dest_fd, char *buf, size_t buf_size,
              size_t hole_size, off_t src_total_size,
              enum Sparse_type sparse_mode,
              char const *src_name, char const *dst_name,
-             struct extent_scan *scan)
+             struct extent_scan *scan,
+             bool *require_normal_copy,
+             int iCountDown, char ** cProgressField, struct timeval last_time,
+             int last_size, int iBarLength, struct stat src_open_sb,
+             const struct cp_options *x)
 {
   off_t last_ext_start = 0;
   off_t last_ext_len = 0;
@@ -576,11 +727,14 @@ extent_copy (int src_fd, int dest_fd, char *buf, size_t buf_size,
               empty_extent = false;
               last_ext_len = ext_len;
               bool read_hole;
+              struct progress_status s_progress = {
+                 iCountDown, cProgressField, last_time,
+                 last_size, iBarLength, src_open_sb};
 
-              if ( ! sparse_copy (src_fd, dest_fd, buf, buf_size,
-                                  sparse_mode == SPARSE_ALWAYS ? hole_size: 0,
-                                  true, src_name, dst_name, ext_len, &n_read,
-                                  &read_hole))
+              if (! sparse_copy (src_fd, dest_fd, buf, buf_size,
+                                 sparse_mode == SPARSE_ALWAYS ? hole_size: 0,
+                                 true, src_name, dst_name, ext_len, &n_read,
+                                 &read_hole, &s_progress, (struct cp_options *)x))
                 goto fail;
 
               dest_pos = ext_start + n_read;
@@ -1260,7 +1414,7 @@ infer_scantype (int fd, struct stat const *sb,
    When creating the destination, use DST_MODE & ~OMITTED_PERMISSIONS
    as the third argument in the call to open, adding
    OMITTED_PERMISSIONS after copying as needed.
-   X provides many option settings.
+   x provides many option settings.
    Return true if successful.
    *NEW_DST is as in copy_internal.
    SRC_SB is the result of calling follow_fstatat on SRC_NAME.  */
@@ -1520,13 +1674,104 @@ copy_reg (char const *src_name, char const *dst_name,
       buf_alloc = xmalloc (buf_size + buf_alignment);
       buf = ptr_align (buf_alloc, buf_alignment);
 
+      /* create a field of 6 lines */
+      char ** cProgressField = (char **) calloc (6, sizeof (char*));
+      /* get console width */
+      int iBarLength = 80;
+      struct winsize win;
+      if ( ioctl (STDOUT_FILENO, TIOCGWINSZ, (char *) &win) == 0 && win.ws_col > 0)
+         iBarLength = win.ws_col;
+      /* create rows */
+      int it;
+      for ( it = 0; it < 6; it++ )
+      {
+        cProgressField[it] = (char *) malloc (iBarLength + 1);
+        /* init with spaces */
+        int j;
+        for ( j = 0; j < iBarLength; j++ )
+          cProgressField[it][j] = ' ';
+        cProgressField[it][iBarLength] = '\0';
+      }
+
+      /* global progress bar? */
+      if ( x->iTotalFiles > 1 )
+      {
+        /* init global progress bar */
+        cProgressField[2][0] = '[';
+        cProgressField[2][iBarLength - 8] = ']';
+        cProgressField[2][iBarLength - 7] = ' ';
+        cProgressField[2][iBarLength - 1] = '%';
+
+        /* total size */
+        cProgressField[1][iBarLength - 11] = '/';
+        file_size_format ( cProgressField[1] + iBarLength - 9, x->iTotalSize, 1 );
+
+        /* show how many files were written */
+        int sum_length = sprintf (cProgressField[1], "%d files copied so far...",
+                                  x->iFilesCopied);
+        cProgressField[1][sum_length] = ' ';
+      }
+
+      /* truncate filename? */
+      int fn_length;
+      if (strlen (src_name) > iBarLength - 22)
+        fn_length =
+          sprintf (cProgressField[4], "...%s",
+                   src_name + (strlen (src_name) - iBarLength + 25));
+      else
+        fn_length = sprintf (cProgressField[4], "%s", src_name);
+      cProgressField[4][fn_length] = ' ';
+
+      /* filesize */
+      cProgressField[4][iBarLength - 11] = '/';
+      file_size_format (cProgressField[4] + iBarLength - 9, src_open_sb.st_size, 0);
+
+      int iCountDown = 1;
+      char * sProgressBar = cProgressField[5];
+      sProgressBar[0] = '[';
+      sProgressBar[iBarLength - 8] = ']';
+      sProgressBar[iBarLength - 7] = ' ';
+      sProgressBar[iBarLength - 1] = '%';
+
+      /* this will always save the time in between */
+      struct timeval last_time;
+      gettimeofday (& last_time, NULL);
+      int last_size = x->iTotalWritten;
+
+      if (sparse_src)
+        {
+          bool normal_copy_required;
+
+          /* Perform an efficient extent-based copy, falling back to the
+             standard copy only if the initial extent scan fails.  If the
+             '--sparse=never' option is specified, write all data but use
+             any extents to read more efficiently.  */
+          if (extent_copy (source_desc, dest_desc, buf, buf_size, hole_size,
+                           src_open_sb.st_size,
+                           make_holes ? x->sparse_mode : SPARSE_NEVER,
+                           src_name, dst_name, &normal_copy_required,
+                           iCountDown, cProgressField, last_time, last_size,
+                           iBarLength, src_open_sb, x))
+            goto preserve_metadata;
+
+          if (! normal_copy_required)
+            {
+              return_val = false;
+              goto close_src_and_dst_desc;
+            }
+        }
+
       off_t n_read;
       bool wrote_hole_at_eof = false;
+      struct progress_status s_progress = { iCountDown, cProgressField, last_time,
+                                            last_size, iBarLength, src_open_sb};
       if (! (scantype == EXTENT_SCANTYPE
              ? extent_copy (source_desc, dest_desc, buf, buf_size, hole_size,
                             src_open_sb.st_size,
                             make_holes ? x->sparse_mode : SPARSE_NEVER,
-                            src_name, dst_name, &scan_inference.extent_scan)
+                            src_name, dst_name, &scan_inference.extent_scan,
+                            iCountDown, cProgressField, last_time, last_size,
+                            iBarLength, src_open_sb, x)
 #ifdef SEEK_HOLE
              : scantype == LSEEK_SCANTYPE
              ? lseek_copy (source_desc, dest_desc, buf, buf_size, hole_size,
@@ -1538,7 +1783,7 @@ copy_reg (char const *src_name, char const *dst_name,
                             make_holes ? hole_size : 0,
                             x->sparse_mode == SPARSE_ALWAYS,
                             src_name, dst_name, UINTMAX_MAX, &n_read,
-                            &wrote_hole_at_eof)))
+                            &wrote_hole_at_eof, &s_progress, (struct cp_options *)x)))
         {
           return_val = false;
           goto close_src_and_dst_desc;
@@ -1549,8 +1794,16 @@ copy_reg (char const *src_name, char const *dst_name,
           return_val = false;
           goto close_src_and_dst_desc;
         }
+      if (x->progress)
+        {
+          int i;
+          for (i = 0; i < 6; i++)
+            free (cProgressField[i]);
+          free (cProgressField);
+        }
     }
 
+ preserve_metadata:
   if (x->preserve_timestamps)
     {
       struct timespec timespec[2];

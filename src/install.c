@@ -667,7 +667,7 @@ install_file_in_file (const char *from, const char *to,
       error (0, errno, _("cannot stat %s"), quoteaf (from));
       return false;
     }
-  if (! copy_file (from, to, x))
+  if (! copy_file (from, to, (struct cp_options *)x))
     return false;
   if (strip_files)
     if (! strip (to))
@@ -749,7 +749,7 @@ install_file_in_dir (const char *from, const char *to_dir,
   if (mkdir_and_install)
     ret = mkancesdirs_safe_wd (from, to, (struct cp_options *)x, true);
 
-  ret = ret && install_file_in_file (from, to, x);
+  ret = ret && install_file_in_file (from, to, (struct cp_options *)x);
   free (to);
   return ret;
 }
