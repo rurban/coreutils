@@ -235,6 +235,9 @@ struct cp_options
      Create destination directories as usual. */
   bool symbolic_link;
 
+  /* If true, draw a nice progress bar on screen */
+  bool progress_bar;
+
   /* If true, do not copy a nondirectory that has an existing destination
      with the same or newer modification time. */
   bool update;
@@ -278,6 +281,14 @@ struct cp_options
 
   /* FIXME */
   Hash_table *src_info;
+
+  /* progress-bar status vars */
+  long iTotalSize;
+  long iTotalWritten;
+  int iFilesCopied;
+  struct timeval oStartTime;
+  int iTotalFiles;
+  bool progress;
 };
 
 /* Arrange to make rename calls go through the wrapper function
@@ -314,5 +325,7 @@ void cp_options_default (struct cp_options *) _GL_ATTRIBUTE_NONNULL ();
 bool chown_failure_ok (struct cp_options const *)
   _GL_ATTRIBUTE_NONNULL () _GL_ATTRIBUTE_PURE;
 mode_t cached_umask (void);
+
+int file_size_format (char *cDst, long lSize, int iCounter);
 
 #endif

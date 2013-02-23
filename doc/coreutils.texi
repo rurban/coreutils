@@ -8953,6 +8953,12 @@ This option is independent of the @option{--interactive} or
 This option is ignored when the @option{--no-clobber} or @option{-n} option
 is also used.
 
+@item -g
+@itemx --progress-bar
+@opindex -g
+@opindex --progress-bar
+Display a progress bar while copying.
+
 @item -H
 @opindex -H
 If a command line argument specifies a symbolic link, then copy the
@@ -10145,6 +10151,12 @@ If you specify more than one of the @option{-i}, @option{-f}, @option{-n}
 options, only the final one takes effect.
 @end macro
 @mvOptsIfn
+
+@item -g
+@itemx --progress-bar
+@opindex -g
+@opindex --progress-bar
+Display a progress bar while moving.
 
 @item -i
 @itemx --interactive
