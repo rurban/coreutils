@@ -67,6 +67,11 @@ set_file_list (char **file_list);
 extern FILE *
 next_file (FILE *fp);
 
+/* Return the name of the currently open file
+   (corresponding to the last result form next_file. */
+extern const char*
+current_file (void);
+
 /* */
 extern void
 cleanup_file_list_stdin (void);

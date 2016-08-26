@@ -27,6 +27,10 @@ my $prog = 'expand';
 # Turn off localization of executable's output.
 @ENV{qw(LANGUAGE LANG LC_ALL)} = ('C') x 3;
 
+my $locale = $ENV{LOCALE_FR_UTF8};
+! defined $locale || $locale eq 'none'
+  and $locale = 'C';
+
 my @Tests =
   (
    ['t1', '--tabs=3',     {IN=>"a\tb"}, {OUT=>"a  b"}],
@@ -183,6 +187,34 @@ my @Tests =
    ['e7', '--tabs=3/', {IN=>''}, {OUT=>''}, {EXIT=>1},
     {ERR => "$prog: '/' specifier not at start of number: '/'\n"}],
   );
+
+
+# Repeat all tests with multibyte locale ('mbl-' prefix),
+# to ensure there are no rergessions.
+#
+# NOTE about the ERR_SUBST:
+# The error tests above (e1/e2/e3/e4) expect error messages in C locale
+# having single-quote character (ASCII 0x27).
+# In UTF-8 locale, the error messages will use:
+#  'LEFT SINGLE QUOTATION MARK'  (U+2018) (UTF8: 0xE2 0x80 0x98)
+#  'RIGHT SINGLE QUOTATION MARK' (U+2019) (UTF8: 0xE2 0x80 0x99)
+# So we replace them with ascii single-quote and the results will
+# match the expected error string.
+if ($locale ne 'C')
+  {
+    my @new;
+    foreach my $t (@Tests)
+      {
+        my ($tname, @tparams) = @$t;
+
+        push @new, [ "mbl-$tname", @tparams,
+                     {ENV => "LC_ALL=$locale"},
+                     {ERR_SUBST => "s/\xe2\x80[\x98\x99]/'/g"}];
+      }
+    push @Tests, @new;
+  }
+
+
 
 my $save_temps = $ENV{DEBUG};
 my $verbose = $ENV{VERBOSE};
