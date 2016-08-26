@@ -59,6 +59,9 @@ static size_t first_free_tab = 0;
 /* Null-terminated array of input filenames.  */
 static char **file_list = NULL;
 
+/* The name of the current file */
+static const char *current_filename;
+
 /* Default for 'file_list' if no files are given on the command line.  */
 static char *stdin_argv[] =
 {
@@ -359,9 +362,14 @@ next_file (FILE *fp)
         {
           have_read_stdin = true;
           fp = stdin;
+          current_filename = "(stdin)";
         }
       else
-        fp = fopen (file, "r");
+        {
+          fp = fopen (file, "r");
+          current_filename = file;
+        }
+
       if (fp)
         {
           prev_file = file;
@@ -372,6 +380,12 @@ next_file (FILE *fp)
       exit_status = EXIT_FAILURE;
     }
   return NULL;
+}
+
+extern const char* _GL_ATTRIBUTE_PURE
+current_file (void)
+{
+  return current_filename;
 }
 
 /* */
