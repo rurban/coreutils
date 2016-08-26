@@ -134,6 +134,7 @@
 * unexpand: (coreutils)unexpand invocation.     Convert spaces to tabs.
 * uniq: (coreutils)uniq invocation.             Uniquify files.
 * unlink: (coreutils)unlink invocation.         Removal via unlink(2).
+* unorm: (coreutils)mbfilter invocation.        Manipulate multibyte files.
 * uptime: (coreutils)uptime invocation.         Print uptime and load.
 * users: (coreutils)users invocation.           Print current user names.
 * vdir: (coreutils)vdir invocation.             List directories verbosely.
@@ -193,7 +194,7 @@ Free Documentation License''.
 * Summarizing files::            wc sum cksum b2sum md5sum sha1sum sha2
 * Operating on sorted files::    sort shuf uniq comm ptx tsort
 * Operating on fields::          cut paste join
-* Operating on characters::      tr expand unexpand
+* Operating on characters::      tr expand unexpand unorm
 * Directory listing::            ls dir vdir dircolors
 * Basic operations::             cp dd install mv rm shred
 * Special file types::         mkdir rmdir unlink mkfifo mknod ln link readlink
@@ -299,6 +300,7 @@ Operating on characters
 * tr invocation::                Translate, squeeze, and/or delete characters
 * expand invocation::            Convert tabs to spaces
 * unexpand invocation::          Convert spaces to tabs
+* unorm invocation::             Fix and adjust multibyte characters in files
 
 @command{tr}: Translate, squeeze, and/or delete characters
 
@@ -6975,6 +6977,7 @@ These commands operate on individual characters.
 * tr invocation::               Translate, squeeze, and/or delete characters.
 * expand invocation::           Convert tabs to spaces.
 * unexpand invocation::         Convert spaces to tabs.
+* unorm invocation::         Fix and normalize multibyte characters in files.
 @end menu
 
 
@@ -7525,6 +7528,21 @@ even if they occur after non-blank characters in a line.
 
 @exitstatus
 
+@node unorm invocation
+@section @command{unorm}: Fix and normalize multibyte characters in files.
+
+@pindex unorm
+
+@command{unorm} fixes invalid multibyte sequences and optionally normalizes
+character according to the unicode normalization rules.
+
+@command{unorm} processes the contents of each given @var{file}, or
+standard input if none are given or for a @var{file} of @samp{-}, to
+standard output, converting blanks at the beginning of each line into
+
+@example
+unorm [@var{option}]@dots{} [@var{file}]@dots{}
+@end example
 
 @node Directory listing
 @chapter Directory listing
@@ -14883,7 +14901,6 @@ Exit status:
 @menu
 * Realpath usage examples::              Realpath usage examples.
 @end menu
-
 
 @node Realpath usage examples
 @subsection Realpath usage examples

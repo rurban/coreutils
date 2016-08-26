@@ -137,6 +137,7 @@ src/uname.c
 src/unexpand.c
 src/uniq.c
 src/unlink.c
+src/unorm.c
 src/uptime.c
 src/users.c
 src/wc.c

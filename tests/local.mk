@@ -311,6 +311,7 @@ all_tests =					\
   tests/misc/env-S.pl				\
   tests/misc/env-S-script.sh			\
   tests/misc/expand.pl				\
+  tests/misc/expand-multibyte.pl		\
   tests/misc/expr.pl				\
   tests/misc/expr-multibyte.pl			\
   tests/misc/factor.pl				\
@@ -395,6 +396,7 @@ all_tests =					\
   tests/misc/sort-version.sh			\
   tests/misc/sort-NaN-infloop.sh		\
   tests/misc/sort-u-FMR.sh			\
+  tests/misc/unorm.pl				\
   tests/split/filter.sh				\
   tests/split/suffix-auto-length.sh		\
   tests/split/suffix-length.sh			\

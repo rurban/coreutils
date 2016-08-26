@@ -39,6 +39,8 @@
 #include <sys/types.h>
 #include "system.h"
 #include "die.h"
+#include "multibyte.h"
+#include "mbbuffer.h"
 
 #include "expand-common.h"
 
@@ -177,6 +179,143 @@ expand (void)
     }
 }
 
+
+
+static void
+expand_multibyte (void)
+{
+  /* Input stream.  */
+  FILE *fp = next_file (NULL);
+
+  if (!fp)
+    return;
+
+  struct mbbuf mbb;
+  xmbbuf_init_file (&mbb, fp, current_file ());
+
+  while (true)
+    {
+      /* Input character, or EOF.  */
+      int c;
+
+      /* If true, perform translations.  */
+      bool convert = true;
+
+
+      /* The following variables have valid values only when CONVERT
+         is true:  */
+
+      /* Column of next input character.  */
+      uintmax_t column = 0;
+
+      /* Index in TAB_LIST of next tab stop to examine.  */
+      size_t tab_index = 0;
+
+
+      /* Convert a line of text.  */
+
+      do
+        {
+          /* Multibyte-specific code */
+          if (!mbbuf_getchar (&mbb, fp))
+            {
+
+              /* EOF or I/O error - skip to the next file in both cases.
+                 TODO: is there per-file error reporting in expand()? */
+              fp = next_file (fp);
+              if (!fp)
+                {
+                  mbbuf_free (&mbb);
+                  return;
+                }
+
+              /* reset mbb and continue to get a char from the next file */
+              mbb.eof = false;
+              mbb.err = false;
+              continue;
+            }
+
+
+          int char_width;
+          c = -1; /* prevent tab-expansion unless it's a single-byte char. */
+          if (mbb.mb_valid)
+            {
+              /* Valid multibyte/singlebyte character */
+              char_width = wcwidth (mbb.wc);
+
+              /* Re-use the code below by setting 'c'
+                 to the single-byte character we got. */
+              if (mbb.mb_len==1)
+                c = mbb.mb_str[0];
+            }
+          else
+            {
+              /* invalid multibyte sequence, assume it's one byte,
+                 one character. */
+              char_width = 1;
+            }
+
+          /* The code below is similar to single-byte expand.
+             Multibyte differences are prefixed with a comment. */
+          if (convert)
+            {
+              if (c == '\t')
+                {
+                  /* Column the next input tab stop is on.  */
+                  uintmax_t next_tab_column;
+                  bool last_tab IF_LINT (=0);
+
+                  next_tab_column = get_next_tab_column (column, &tab_index,
+                                                         &last_tab);
+
+                  if (last_tab)
+                    next_tab_column = column + 1;
+
+                  if (next_tab_column < column)
+                    error (EXIT_FAILURE, 0, _("input line is too long"));
+
+                  while (++column < next_tab_column)
+                    if (putchar (' ') < 0)
+                      error (EXIT_FAILURE, errno, _("write error"));
+
+                  /* multibyte-expand: instead of setting c=' '
+                     and assuming it'll be printed below, write one more space
+                     and continue (because the output below doesn't use 'c') */
+                  if (putchar (' ') < 0)
+                    error (EXIT_FAILURE, errno, _("write error"));
+                  continue;
+                }
+              else if (c == '\b')
+                {
+                  /* Go back one column, and force recalculation of the
+                     next tab stop.  */
+                  column -= !!column;
+                  tab_index -= !!tab_index;
+                }
+              else
+                {
+                  /* multibyte-expand: increment by the multibyte
+                     character width */
+                  column += char_width;
+                  if (!column)
+                    error (EXIT_FAILURE, 0, _("input line is too long"));
+                }
+
+              convert &= convert_entire_line || !! isblank (c);
+            }
+
+          /* multibyte-expand: write the input as-is, don't assume
+             it's one byte/character (regardless of whether it was
+             a valid multibyte sequence or not). */
+          if (fwrite (mbb.mb_str, 1, mbb.mb_len, stdout) != mbb.mb_len)
+            error (EXIT_FAILURE, errno, _("write error"));
+        }
+      while (c != '\n');
+    }
+}
+
+
+
 int
 main (int argc, char **argv)
 {
@@ -229,7 +368,10 @@ main (int argc, char **argv)
 
   set_file_list ((optind < argc) ? &argv[optind] : NULL);
 
-  expand ();
+  if (use_multibyte ())
+    expand_multibyte();
+  else
+    expand ();
 
   cleanup_file_list_stdin ();
 

@@ -34,6 +34,16 @@ EXTRA_PROGRAMS = \
 bin_PROGRAMS = @bin_PROGRAMS@
 pkglibexec_PROGRAMS = @pkglibexec_PROGRAMS@
 
+# TEMPORARY multibyte-test program
+bin_PROGRAMS += src/multibyte-test
+src_multibyte_test_SOURCES = src/multibyte-test.c \
+			    src/multibyte.c
+
+# TEMPORARY mbbuffer-test program
+bin_PROGRAMS += src/mbbuffer-test
+src_mbbuffer_test_SOURCES = src/mbbuffer-test.c \
+			    src/mbbuffer.c src/mbbuffer.h
+
 # Needed by the testsuite.
 noinst_PROGRAMS =		\
   src/getlimits			\
@@ -54,6 +64,8 @@ noinst_HEADERS =		\
   src/iopoll.h			\
   src/longlong.h		\
   src/ls.h			\
+  src/mbbuffer.h		\
+  src/multibyte.h		\
   src/operand2sig.h		\
   src/prog-fprintf.h		\
   src/remove.h			\
@@ -206,6 +218,7 @@ src_uname_LDADD = $(LDADD)
 src_unexpand_LDADD = $(LDADD)
 src_uniq_LDADD = $(LDADD)
 src_unlink_LDADD = $(LDADD)
+src_unorm_LDADD =$(LDADD)
 src_uptime_LDADD = $(LDADD)
 src_users_LDADD = $(LDADD)
 # See vdir_LDADD below
@@ -298,6 +311,7 @@ copy_ldadd += $(LIB_XATTR)
 src_factor_LDADD += $(LIBICONV)
 src_printf_LDADD += $(LIBICONV)
 src_ptx_LDADD += $(LIBICONV)
+src_unorm_LDADD += $(LIBICONV)
 
 # for libcrypto hash routines
 src_md5sum_LDADD += $(LIB_CRYPTO)
@@ -438,8 +452,13 @@ src_base32_CPPFLAGS = -DBASE_TYPE=32 $(AM_CPPFLAGS)
 src_basenc_SOURCES = src/basenc.c
 src_basenc_CPPFLAGS = -DBASE_TYPE=42 $(AM_CPPFLAGS)
 
-src_expand_SOURCES = src/expand.c src/expand-common.c
+src_ginstall_CPPFLAGS = -DENABLE_MATCHPATHCON=1 $(AM_CPPFLAGS)
+
+src_expand_SOURCES = src/expand.c src/expand-common.c \
+                     src/multibyte.c src/mbbuffer.c
 src_unexpand_SOURCES = src/unexpand.c src/expand-common.c
+
+src_unorm_SOURCES = src/unorm.c src/mbbuffer.c src/multibyte.c
 
 src_wc_SOURCES = src/wc.c
 if USE_AVX2_WC_LINECOUNT
