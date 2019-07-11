@@ -468,7 +468,7 @@ sparse_copy (int src_fd, int dest_fd, char **abuf, size_t buf_size,
             s_progress->last_time = cur_time;
             s_progress->last_size = cur_size;
 
-            /* how many time has passed since the start? */
+            /* how much time has passed since the start? */
             int isec_elapsed = cur_time.tv_sec - x->oStartTime.tv_sec;
             int sec_remaining = (int) ( (double) isec_elapsed / cur_size
                                         * x->iTotalSize) - isec_elapsed;
@@ -477,9 +477,18 @@ sparse_copy (int src_fd, int dest_fd, char **abuf, size_t buf_size,
             int hours_remaining = min_remaining / 60;
             min_remaining -= hours_remaining * 60;
             /* print out */
-            sprintf (s_progress->cProgressField[3],
-                     "Copying at %s/s (about %d %d %d remaining)", s_copy_speed,
+            if (hours_remaining)
+              sprintf (s_progress->cProgressField[3],
+                     "Copying at %s/s (about %dh%dm%ds remaining)", s_copy_speed,
                      hours_remaining, min_remaining, sec_remaining );
+            else if (min_remaining)
+              sprintf (s_progress->cProgressField[3],
+                     "Copying at %s/s (about %dm%ds remaining)", s_copy_speed,
+                     min_remaining, sec_remaining );
+            else
+              sprintf (s_progress->cProgressField[3],
+                     "Copying at %s/s (about %ds remaining)", s_copy_speed,
+                     sec_remaining );
 
             int fs_len;
             if (x->iTotalFiles > 1)
