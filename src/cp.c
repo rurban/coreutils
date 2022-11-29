@@ -652,21 +652,17 @@ do_copy (int n_files, char **file, char const *target_directory,
         }
     }
 
-  struct timeval start_time;
   if (x->progress_bar)
     {
-      s_progress.iTotalSize = 0;
-      s_progress.iTotalFiles = 0;
-      s_progress.iFilesCopied = 0;
-      s_progress.iTotalWritten = 0;
-
-      /* save time */
-      gettimeofday (&start_time, NULL);
-      s_progress.oStartTime = start_time;
+      s_progress.total_size = 0;
+      s_progress.total_files = 0;
+      s_progress.files_copied = 0;
+      s_progress.total_written = 0;
+      gettimeofday (&s_progress.start_time, NULL);
 
       printf ( "Calculating total size... \r" );
       fflush ( stdout );
-      long iTotalSize = 0;
+      long total_size = 0;
       int iFiles = n_files;
       if ( ! target_directory )
         iFiles = n_files - 1;
@@ -681,7 +677,7 @@ do_copy (int n_files, char **file, char const *target_directory,
       if (fp == NULL || fgets(output, sizeof(output)-1, fp) == NULL)
         printf("failed to run find.\n");
       else
-        s_progress.iTotalFiles = atoi (output);
+        s_progress.total_files = atoi (output);
 
       for (j = 0; j < iFiles; j++)
         {
@@ -697,14 +693,14 @@ do_copy (int n_files, char **file, char const *target_directory,
             {
               /* isolate size */
               strchr ( output, '\t' )[0] = '\0';
-              iTotalSize += atol ( output );
+              total_size += atol ( output );
 
-              printf ( "Calculating total size... %ld\r", iTotalSize );
+              printf ( "Calculating total size... %ld\r", total_size );
               fflush ( stdout );
             }
           pclose(fp);
         }
-      s_progress.iTotalSize = iTotalSize;
+      s_progress.total_size = total_size;
     }
 
 
@@ -851,7 +847,7 @@ do_copy (int n_files, char **file, char const *target_directory,
       {
         /* remove everything */
         int i;
-        if (s_progress.iTotalFiles > 1)
+        if (s_progress.total_files > 1)
         {
           for (i = 0; i < 6; i++)
             printf ("\033[K\n");
@@ -867,23 +863,23 @@ do_copy (int n_files, char **file, char const *target_directory,
         /* save time */
         struct timeval end_time;
         gettimeofday (&end_time, NULL);
-        int usec_elapsed = end_time.tv_usec - start_time.tv_usec;
+        int usec_elapsed = end_time.tv_usec - s_progress.start_time.tv_usec;
         double sec_elapsed = (double) usec_elapsed / 1000000.0;
-        sec_elapsed += (double) (end_time.tv_sec - start_time.tv_sec);
+        sec_elapsed += (double) (end_time.tv_sec - s_progress.start_time.tv_sec);
 
         /* get total size */
         char sTotalWritten[20];
-        file_size_format (sTotalWritten, s_progress.iTotalSize, 1);
+        file_size_format (sTotalWritten, s_progress.total_size, 1);
         /* TODO: using s_progress.iTotalWritten would be more correct, but is less accurate */
 
         /* calculate speed */
-        int copy_speed = (int) ((double) s_progress.iTotalWritten / sec_elapsed);
+        int copy_speed = (int) ((double) s_progress.total_written / sec_elapsed);
         char s_copy_speed[20];
         file_size_format (s_copy_speed, copy_speed, 1);
 
         /* good-bye message */
         printf ("%d files (%s) copied in %.1f seconds (%s/s).\n",
-                s_progress.iFilesCopied, sTotalWritten,
+                s_progress.files_copied, sTotalWritten,
                 sec_elapsed, s_copy_speed);
     }
 
@@ -940,13 +936,6 @@ cp_option_init (struct cp_options *x)
 
   x->dest_info = NULL;
   x->src_info = NULL;
-
-  //x->iTotalSize = 0;
-  //x->iTotalWritten = 0;
-  //x->iFilesCopied = 0;
-  //x->iTotalFiles = 0;
-  //x->progress_bar = false;
-  //memset(&x->oStartTime, 0, sizeof (struct timeval));
 }
 
 /* Given a string, ARG, containing a comma-separated list of arguments

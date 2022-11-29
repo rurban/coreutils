@@ -284,16 +284,16 @@ struct cp_options
 };
 
 struct progress_status {
-  char ** cProgressField;
+  char * progress_row[6];
   struct timeval last_time;
-  struct timeval oStartTime;
+  struct timeval start_time;
   struct stat src_open_sb;
-  int iCountDown;
-  int last_size, iBarLength;
-  long iTotalSize;
-  long iTotalWritten;
-  int iFilesCopied;
-  int iTotalFiles;
+  int count_down;
+  int last_size, bar_len;
+  long total_size;
+  long total_written;
+  int files_copied;
+  int total_files;
 };
 
 /* Arrange to make rename calls go through the wrapper function

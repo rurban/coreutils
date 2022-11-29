@@ -482,6 +482,7 @@ all_tests =					\
   tests/cp/cp-HL.sh				\
   tests/cp/cp-deref.sh				\
   tests/cp/cp-i.sh				\
+  tests/cp/cp-g.sh				\
   tests/cp/cp-mv-backup.sh			\
   tests/cp/cp-parents.sh			\
   tests/cp/debug.sh				\

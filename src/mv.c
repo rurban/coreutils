@@ -159,24 +159,20 @@ static bool
 do_move (char const *source, char const *dest,
          int dest_dirfd, char const *dest_relname, struct cp_options *x)
 {
-  struct timeval start_time;
-
   bool copy_into_self;
   bool rename_succeeded;
   struct progress_status s_progress = { 0 };
 
   if (x->progress_bar && x->rename_errno != 0)
     {
-      s_progress.iTotalSize = 0;
-      s_progress.iFilesCopied = 0;
-      s_progress.iTotalWritten = 0;
-
-      gettimeofday (&start_time, NULL);
-      s_progress.oStartTime = start_time;
+      s_progress.total_size = 0;
+      s_progress.files_copied = 0;
+      s_progress.total_written = 0;
+      gettimeofday (&s_progress.start_time, NULL);
 
       printf ("Calculating total size... \r");
       fflush (stdout);
-      long iTotalSize = 0;
+      long total_size = 0;
       /* call du -s for each file */
       /* create command */
       char command[1024];
@@ -195,13 +191,13 @@ do_move (char const *source, char const *dest,
         {
           /* isolate size */
           strchr ( output, '\t' )[0] = '\0';
-          iTotalSize += atol ( output );
-          printf ("Calculating total size... %ld\r", iTotalSize);
+          total_size += atol ( output );
+          printf ("Calculating total size... %ld\r", total_size);
           fflush (stdout);
         }
 
       pclose (fp);
-      s_progress.iTotalSize = iTotalSize;
+      s_progress.total_size = total_size;
     }
   bool ok = copy (source, dest, dest_dirfd, dest_relname, 0, x,
                   &copy_into_self, &rename_succeeded, &s_progress);
@@ -210,7 +206,7 @@ do_move (char const *source, char const *dest,
     {
       /* remove everything */
       int i;
-      int limit = (s_progress.iTotalFiles > 1 ? 6 : 3);
+      int limit = (s_progress.total_files > 1 ? 6 : 3);
       for (i=0; i < limit; i++)
         printf ("\033[K\n");
       printf ("\r\033[3A");
@@ -218,23 +214,23 @@ do_move (char const *source, char const *dest,
       /* save time */
       struct timeval end_time;
       gettimeofday (&end_time, NULL);
-      int usec_elapsed = end_time.tv_usec - start_time.tv_usec;
+      int usec_elapsed = end_time.tv_usec - s_progress.start_time.tv_usec;
       double sec_elapsed = (double) usec_elapsed / 1000000.0;
-      sec_elapsed += (double) (end_time.tv_sec - start_time.tv_sec);
+      sec_elapsed += (double) (end_time.tv_sec - s_progress.start_time.tv_sec);
 
       /* get total size */
       char sTotalWritten[20];
-      file_size_format (sTotalWritten, s_progress.iTotalSize, 1);
-      /* TODO: using s_progress.iTotalWritten would be more correct, but is less accurate */
+      file_size_format (sTotalWritten, s_progress.total_size, 1);
+      /* TODO: using s_progress.total_written would be more correct, but is less accurate */
 
       /* calculate speed */
-      int copy_speed = (int) ((double) s_progress.iTotalWritten / sec_elapsed);
+      int copy_speed = (int) ((double) s_progress.total_written / sec_elapsed);
       char s_copy_speed[20];
       file_size_format (s_copy_speed, copy_speed, 1);
 
       /* good-bye message */
       printf ("%d files (%s) moved in %.1f seconds (%s/s).\n",
-              s_progress.iFilesCopied, sTotalWritten, sec_elapsed, s_copy_speed);
+              s_progress.files_copied, sTotalWritten, sec_elapsed, s_copy_speed);
     }
 
   if (ok)
